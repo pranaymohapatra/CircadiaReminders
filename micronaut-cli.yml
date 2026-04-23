@@ -1,0 +1,6 @@
+applicationType: default
+defaultPackage: com.circadia.reminders
+testFramework: kotest
+sourceLanguage: kotlin
+buildTool: gradle_kotlin
+features: [app-name, data, data-jdbc, flyway, graalvm, gradle, http-client-test, jdbc-hikari, json-schema, json-schema-validation, kotest, kotlin, kotlin-application, ksp, logback, micronaut-aot, micronaut-build, micronaut-http-validation, netty-server, postgres, readme, serialization-jackson, shade, static-resources, test-resources, yaml, yaml-build]

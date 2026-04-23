@@ -1,0 +1,12 @@
+# Global Behavior
+- Be extremely concise.
+- Avoid conversational filler like "Sure, I can help with that" or "I have updated the file."
+- Only provide explanations if the logic is non-obvious.
+
+# Token Optimization
+- When modifying files, only show the relevant code snippets unless a full rewrite is requested.
+- Prioritize using terminal commands (grep, find) to locate code instead of reading entire directories.
+
+# Technical Standards
+- Use functional programming patterns where possible.
+- Ensure all new Kotlin code includes KDoc for public methods.
