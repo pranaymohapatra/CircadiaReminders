@@ -1,29 +1,28 @@
 package com.circadia.reminders.services
 
 import com.circadia.reminders.domain.ReminderType
-import com.circadia.reminders.domain.TaskStatus
-import com.circadia.reminders.domain.TriggerEvent
 import com.circadia.reminders.dtos.ReminderListSummaryDto
 import com.circadia.reminders.dtos.ReminderSummaryDto
 import com.circadia.reminders.projections.ReminderSummaryProjection
 import com.circadia.reminders.repositories.ReminderRepository
 import io.micronaut.data.model.Pageable
+import io.micronaut.json.JsonMapper
 import jakarta.inject.Singleton
 import org.slf4j.LoggerFactory
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.*
 
 @Singleton
 class ReminderSummaryService(
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val jsonMapper: JsonMapper
 ) {
     
     private val logger = LoggerFactory.getLogger(ReminderSummaryService::class.java)
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
     
-    fun getReminderSummaries(userId: UUID, pageable: Pageable): ReminderListSummaryDto {
+    suspend fun getReminderSummaries(userId: UUID, pageable: Pageable): ReminderListSummaryDto {
         logger.debug("Fetching reminder summaries for user: $userId")
         
         val projections = reminderRepository.findSummaryByUserId(userId, pageable)
@@ -53,10 +52,12 @@ class ReminderSummaryService(
     }
     
     private fun generateDisplayMetadata(projection: ReminderSummaryProjection): String {
-        return when (projection.getReminderType()) {
+        val trigger = when (projection.getReminderType()) {
             ReminderType.STATIC -> generateStaticDisplayMetadata(projection)
             ReminderType.DYNAMIC -> generateDynamicDisplayMetadata(projection)
         }
+        val end = endConditionSuffix(projection.getEndCondition())
+        return if (end != null) "$trigger • $end" else trigger
     }
     
     private fun generateStaticDisplayMetadata(projection: ReminderSummaryProjection): String {
@@ -96,25 +97,23 @@ class ReminderSummaryService(
             null
         }
         
+        val intervalStr = interval?.let { if (it == 60) "1hr" else "${it}min" }
+
         return when {
             // Complex case: interval + trigger + time + days (e.g., "Every 1hr after 10:00 on Mon, Fri")
             interval != null && triggerEvent != null && timeStr != null && daysStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr after $timeStr $daysStr"
             }
             // Interval + trigger + time (e.g., "Every 30min after 10:00")
             interval != null && triggerEvent != null && timeStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr after $timeStr"
             }
             // Interval + trigger + days (e.g., "Every 1hr after awake on Mon, Fri")
             interval != null && triggerEvent != null && daysStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr after ${triggerEvent.name.lowercase()} $daysStr"
             }
             // Interval + time + days (e.g., "Every 1hr at 10:00 on Mon, Fri")
             interval != null && timeStr != null && daysStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr at $timeStr $daysStr"
             }
             // Trigger + time + days (e.g., "After awake at 10:00 on Mon, Fri")
@@ -123,17 +122,14 @@ class ReminderSummaryService(
             }
             // Interval + trigger (e.g., "Every 30min after awake")
             interval != null && triggerEvent != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr after ${triggerEvent.name.lowercase()}"
             }
             // Interval + time (e.g., "Every 30min at 10:00")
             interval != null && timeStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr at $timeStr"
             }
             // Interval + days (e.g., "Every 1hr on Mon, Fri")
             interval != null && daysStr != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr $daysStr"
             }
             // Trigger + time (e.g., "After awake at 10:00")
@@ -150,7 +146,6 @@ class ReminderSummaryService(
             }
             // Interval only (e.g., "Every 30min")
             interval != null -> {
-                val intervalStr = if (interval == 60) "1hr" else "${interval}min"
                 "Every $intervalStr"
             }
             // Trigger only (e.g., "After awake")
@@ -168,6 +163,30 @@ class ReminderSummaryService(
             else -> {
                 "Dynamic reminder"
             }
+        }
+    }
+
+    private fun endConditionSuffix(endConditionJson: String?): String? {
+        if (endConditionJson.isNullOrBlank()) return null
+
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            val obj = jsonMapper.readValue(endConditionJson, Map::class.java) as Map<String, Any>
+            val type = obj["type"] as? String ?: return null
+            when (type) {
+                "TIME" -> {
+                    val date = obj["date"] as? String ?: return null
+                    "Ends on $date"
+                }
+                "EVENT" -> {
+                    val event = obj["event"] as? String ?: return null
+                    "Ends after $event"
+                }
+                "MANUAL" -> "Ends manually"
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 }

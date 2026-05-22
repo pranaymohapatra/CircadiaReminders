@@ -13,6 +13,7 @@ group = "com.circadia.reminders"
 
 
 val kotlinVersion=project.properties.get("kotlinVersion")
+val testcontainersVersion = "1.21.4"
 
 repositories {
     mavenCentral()
@@ -49,6 +50,7 @@ dependencies {
     implementation("io.micronaut.security:micronaut-security-jwt")
     implementation("io.micronaut.security:micronaut-security-oauth2")
     implementation("org.springframework.security:spring-security-crypto:6.4.0")
+    implementation("org.springframework:spring-jcl:6.2.0")
     
     // Core & Serialization
     implementation("io.micronaut.jsonschema:micronaut-json-schema-annotations")
@@ -66,6 +68,18 @@ dependencies {
 
     testImplementation("io.micronaut:micronaut-http-client")
     testImplementation("io.micronaut.jsonschema:micronaut-json-schema-validation")
+    testImplementation(platform("org.testcontainers:testcontainers-bom:$testcontainersVersion"))
+    testImplementation("org.testcontainers:jdbc")
+    testImplementation("org.testcontainers:postgresql")
+}
+
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.testcontainers") {
+            useVersion(testcontainersVersion)
+            because("Docker Engine 29 requires Docker API >= 1.44; older Testcontainers versions fail Docker detection")
+        }
+    }
 }
 
 
@@ -88,6 +102,9 @@ graalvmNative.toolchainDetection = false
 
 
 micronaut {
+    testResources {
+        enabled.set(false)
+    }
     runtime("netty")
     testRuntime("kotest5")
     processing {
@@ -113,10 +130,5 @@ micronaut {
 tasks.named<io.micronaut.gradle.docker.NativeImageDockerfile>("dockerfileNative") {
     jdkVersion = "21"
 }
-
-
-
-
-
 
 

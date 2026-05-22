@@ -1,31 +1,45 @@
 micronaut:
   server:
     context-path: /api/v1
+    port: ${PORT:8080}
   application:
     name: circadiaReminders
-    security:
-      enabled: true
-      authentication: bearer
-      token:
-        jwt:
-          signatures:
-            secret:
-              generator: # This defines the signature key
-                secret: "${JWT_GENERATOR_SIGNATURE_SECRET:pleaseChangeThisToAStrongSecret2026}"
-                jws-algorithm: HS256
+  security:
+    enabled: true
+    authentication: bearer
+    token:
+      jwt:
+        signatures:
+          secret:
+            generator: # This defines the signature key
+              secret: "${JWT_GENERATOR_SIGNATURE_SECRET:pleaseChangeThisToAStrongSecret2026}"
+              jws-algorithm: HS256
         generator:
-          access-token:
-            expiration: 3600 # 1 hour in seconds
           refresh-token:
             enabled: true
+            secret: "${JWT_GENERATOR_REFRESH_TOKEN_SECRET:pleaseChangeThisToAStrongRefreshSecret2026}"
+            jws-algorithm: HS256
             expiration: 2592000 # 30 days in seconds
-        endpoints:
-          login:
-            enabled: true
-            path: /login # Will be /api/v1/login
-          oauth:
-            enabled: true
-            path: /auth/refresh # Will be /api/v1/oauth/access_token
+      generator:
+        access-token:
+          expiration: 3600 # 1 hour in seconds
+    endpoints:
+      login:
+        enabled: true
+        path: /auth/login
+      oauth:
+        enabled: true
+        path: /auth/refresh # Will be /api/v1/auth/refresh
+    oauth2:
+      enabled: true
+      login-uri: /auth{/provider}
+      callback-uri: /auth/callback{/provider}
+      clients:
+        google:
+          client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+          client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+          openid:
+            issuer: https://accounts.google.com
   router:
     static-resources:
       jsonschema:
@@ -36,9 +50,9 @@ datasources:
     driver-class-name: org.postgresql.Driver
     db-type: postgres
     dialect: POSTGRES
-    url: jdbc:postgresql://localhost:5432/flowclock
-    username: ${DB_USERNAME:flowclock_user}
-    password: ${DB_PASSWORD:flowclock_password}
+    url: ${JDBC_DATABASE_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5

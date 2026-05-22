@@ -19,7 +19,7 @@ data class ReminderDto(
     val contextTags: List<String>,
     val priority: Int,
     val isRecurring: Boolean,
-    val completedAt: OffsetDateTime?,
+    val version: Long,
     val createdAt: OffsetDateTime,
     val updatedAt: OffsetDateTime,
     val recurrence: RecurrenceDto,
@@ -49,5 +49,7 @@ data class UpdateReminderDto(
     val contextTags: List<String>?,
     val priority: Int?,
     val isRecurring: Boolean?,
-    val recurrence: RecurrenceDto?
+    val recurrence: RecurrenceDto?,
+    val endCondition: EndConditionDto?,
+    val expectedVersion: Long?
 )

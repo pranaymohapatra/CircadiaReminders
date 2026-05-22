@@ -17,4 +17,6 @@ interface ReminderSummaryProjection {
     fun getDaysOfWeek(): Array<Int>?
     fun getIntervalMinutes(): Int?
     fun getTriggerEvent(): TriggerEvent?
+
+    fun getEndCondition(): String?
 }

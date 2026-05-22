@@ -1,17 +1,18 @@
 package com.circadia.reminders.dtos.mappers
 
 import com.circadia.reminders.dtos.*
+import com.circadia.reminders.domain.UserProvider
 import com.circadia.reminders.entities.*
+import io.micronaut.json.JsonMapper
 import jakarta.inject.Singleton
-import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 @Singleton
-class EntityMapper {
-    
-    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+class EntityMapper(
+    private val jsonMapper: JsonMapper
+) {
     
     fun toUserDto(entity: UserEntity): UserDto {
         return UserDto(
@@ -20,8 +21,8 @@ class EntityMapper {
             username = entity.username,
             firstName = entity.firstName,
             lastName = entity.lastName,
-            createdAt = entity.createdAt,
-            updatedAt = entity.updatedAt
+            createdAt = requireNotNull(entity.createdAt) { "User createdAt is required" },
+            updatedAt = requireNotNull(entity.updatedAt) { "User updatedAt is required" }
         )
     }
     
@@ -32,26 +33,26 @@ class EntityMapper {
             username = entity.username,
             firstName = entity.firstName,
             lastName = entity.lastName,
-            createdAt = entity.createdAt
+            createdAt = requireNotNull(entity.createdAt) { "User createdAt is required" }
         )
     }
     
     fun toProjectDto(entity: ProjectEntity): ProjectDto {
         return ProjectDto(
-            id = entity.id,
+            id = requireNotNull(entity.id) { "Project id is required" },
             userId = entity.userId,
             name = entity.name,
             description = entity.description,
             color = entity.color,
-            isArchived = entity.archived,
-            createdAt = entity.createdAt,
-            updatedAt = entity.updatedAt
+            isArchived = entity.isArchived,
+            createdAt = requireNotNull(entity.createdAt) { "Project createdAt is required" },
+            updatedAt = requireNotNull(entity.updatedAt) { "Project updatedAt is required" }
         )
     }
     
     fun toProjectSummaryDto(entity: ProjectEntity, reminderCount: Long): ProjectSummaryDto {
         return ProjectSummaryDto(
-            id = entity.id,
+            id = requireNotNull(entity.id) { "Project id is required" },
             name = entity.name,
             description = entity.description,
             color = entity.color,
@@ -71,14 +72,59 @@ class EntityMapper {
             contextTags = entity.contextTags.toList(),
             priority = entity.priority,
             isRecurring = entity.isRecurring,
-            completedAt = entity.completedAt,
+            version = entity.version,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
             recurrence = toRecurrenceDto(entity),
-            endCondition = toEndConditionDto(entity.endConditionType, entity.endConditionValue)
+            endCondition = toEndConditionDto(entity.endCondition)
         )
     }
     
+    fun toReminderEntity(createDto: CreateReminderDto, userId: UUID, now: OffsetDateTime): ReminderEntity {
+        val recurrence = createDto.recurrence ?: throw IllegalArgumentException("recurrence is required")
+        return when (recurrence) {
+            is StaticRecurrenceDto -> toReminderEntity(createDto, userId, now, recurrence)
+            is DynamicRecurrenceDto -> toReminderEntity(createDto, userId, now, recurrence)
+        }
+    }
+
+    fun applyReminderUpdate(existing: ReminderEntity, updateDto: UpdateReminderDto, now: OffsetDateTime): ReminderEntity {
+        val withRecurrenceApplied = updateDto.recurrence?.let { recurrence ->
+            when (recurrence) {
+                is StaticRecurrenceDto -> existing.copy(
+                    isRecurring = true,
+                    reminderType = com.circadia.reminders.domain.ReminderType.STATIC,
+                    executionTime = recurrence.executionTime,
+                    daysOfWeek = recurrence.daysOfWeek.toTypedArray(),
+                    intervalMinutes = null,
+                    triggerEvent = null
+                )
+                is DynamicRecurrenceDto -> existing.copy(
+                    isRecurring = true,
+                    reminderType = com.circadia.reminders.domain.ReminderType.DYNAMIC,
+                    executionTime = recurrence.executionTime,
+                    daysOfWeek = recurrence.daysOfWeek?.toTypedArray() ?: emptyArray(),
+                    intervalMinutes = recurrence.intervalMinutes,
+                    triggerEvent = recurrence.triggerEvent
+                )
+            }
+        } ?: existing
+
+        val endConditionJson = if (updateDto.endCondition != null) fromEndConditionDto(updateDto.endCondition) else withRecurrenceApplied.endCondition
+
+        return withRecurrenceApplied.copy(
+            projectId = updateDto.projectId ?: withRecurrenceApplied.projectId,
+            title = updateDto.title ?: withRecurrenceApplied.title,
+            description = updateDto.description ?: withRecurrenceApplied.description,
+            status = updateDto.status ?: withRecurrenceApplied.status,
+            dueDate = updateDto.dueDate ?: withRecurrenceApplied.dueDate,
+            contextTags = updateDto.contextTags?.toTypedArray() ?: withRecurrenceApplied.contextTags,
+            priority = updateDto.priority ?: withRecurrenceApplied.priority,
+            endCondition = endConditionJson,
+            updatedAt = now
+        )
+    }
+
 
 
     
@@ -88,6 +134,7 @@ class EntityMapper {
             email = createDto.email,
             username = createDto.username,
             passwordHash = passwordHash,
+            provider = UserProvider.LOCAL,
             firstName = createDto.firstName,
             lastName = createDto.lastName,
             createdAt = now,
@@ -102,7 +149,7 @@ class EntityMapper {
             name = createDto.name,
             description = createDto.description,
             color = createDto.color,
-            archived = false,
+            isArchived = false,
             createdAt = now,
             updatedAt = now
         )
@@ -119,8 +166,10 @@ class EntityMapper {
             dueDate = createDto.dueDate,
             contextTags = createDto.contextTags.toTypedArray(),
             priority = createDto.priority,
-            isRecurring = createDto.isRecurring,
+            isRecurring = true,
             completedAt = null,
+            deletedAt = null,
+            version = 0,
             createdAt = now,
             updatedAt = now,
             reminderType = com.circadia.reminders.domain.ReminderType.STATIC,
@@ -128,8 +177,7 @@ class EntityMapper {
             daysOfWeek = staticRecurrence.daysOfWeek.toTypedArray(),
             intervalMinutes = null,
             triggerEvent = null,
-            endConditionType = null,
-            endConditionValue = null
+            endCondition = fromEndConditionDto(createDto.endCondition)
         )
     }
     
@@ -144,8 +192,10 @@ class EntityMapper {
             dueDate = createDto.dueDate,
             contextTags = createDto.contextTags.toTypedArray(),
             priority = createDto.priority,
-            isRecurring = createDto.isRecurring,
+            isRecurring = true,
             completedAt = null,
+            deletedAt = null,
+            version = 0,
             createdAt = now,
             updatedAt = now,
             reminderType = com.circadia.reminders.domain.ReminderType.DYNAMIC,
@@ -153,8 +203,7 @@ class EntityMapper {
             daysOfWeek = dynamicRecurrence.daysOfWeek?.toTypedArray() ?: emptyArray(),
             intervalMinutes = dynamicRecurrence.intervalMinutes,
             triggerEvent = dynamicRecurrence.triggerEvent,
-            endConditionType = null,
-            endConditionValue = null
+            endCondition = fromEndConditionDto(createDto.endCondition)
         )
     }
     
@@ -174,43 +223,21 @@ class EntityMapper {
     }
     
     // EndCondition conversion methods
-    private fun toEndConditionDto(type: String?, value: String?): EndConditionDto? {
-        if (type == null) return null
-        
-        return when (type) {
-            "TIME" -> {
-                value?.let { 
-                    try {
-                        EndConditionDto.TimeCondition(LocalTime.parse(it, timeFormatter))
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-            }
-            "EVENT" -> {
-                value?.let { EndConditionDto.EventCondition(it) }
-            }
-            "MANUAL" -> {
-                EndConditionDto.ManualCondition
-            }
-            else -> null
+    private fun toEndConditionDto(json: String?): EndConditionDto? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            jsonMapper.readValue(json, EndConditionDto::class.java)
+        } catch (_: Exception) {
+            null
         }
     }
     
-    private fun fromEndConditionDto(endCondition: EndConditionDto?): Pair<String?, String?> {
-        return when (endCondition) {
-            is EndConditionDto.TimeCondition -> {
-                "TIME" to endCondition.time.format(timeFormatter)
-            }
-            is EndConditionDto.EventCondition -> {
-                "EVENT" to endCondition.event
-            }
-            is EndConditionDto.ManualCondition -> {
-                "MANUAL" to null
-            }
-            null -> {
-                null to null
-            }
+    private fun fromEndConditionDto(endCondition: EndConditionDto?): String? {
+        if (endCondition == null) return null
+        return try {
+            jsonMapper.writeValueAsString(endCondition)
+        } catch (_: Exception) {
+            null
         }
     }
 }

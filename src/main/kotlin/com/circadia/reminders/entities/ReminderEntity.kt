@@ -3,7 +3,6 @@ package com.circadia.reminders.entities
 import com.circadia.reminders.domain.ReminderType
 import com.circadia.reminders.domain.TaskStatus
 import com.circadia.reminders.domain.TriggerEvent
-import com.circadia.reminders.domain.EndEvent
 import io.micronaut.data.annotation.*
 import io.micronaut.data.model.DataType
 import java.time.LocalTime
@@ -38,6 +37,11 @@ data class ReminderEntity (
 
     val completedAt: OffsetDateTime?,
 
+    val deletedAt: OffsetDateTime?,
+
+    @field:Version
+    val version: Long = 0,
+
     @field:DateUpdated
     val createdAt: OffsetDateTime,
 
@@ -56,11 +60,8 @@ data class ReminderEntity (
 
     val triggerEvent: TriggerEvent?, // For DYNAMIC reminders
 
-    // Flat EndCondition columns
-    val endConditionType: String?, // Store the Enum name: "TIME", "EVENT", or "MANUAL"
-
-    @field:TypeDef(type = DataType.STRING)
-    val endConditionValue: String? // Store the actual time or event name as a string
+    @field:TypeDef(type = DataType.JSON)
+    val endCondition: String?
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

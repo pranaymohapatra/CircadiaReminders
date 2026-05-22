@@ -1,3 +1,6 @@
+-- Required for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Create custom enum types
 CREATE TYPE task_status AS ENUM ('PAUSED', 'ACTIVE', 'COMPLETED');
 CREATE TYPE reminder_type AS ENUM ('STATIC', 'DYNAMIC');
@@ -10,7 +13,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255),
-    provider user_provider NOT NULL DEFAULT 'LOCAL',
+    provider VARCHAR(20) NOT NULL DEFAULT 'LOCAL' CHECK (provider IN ('LOCAL', 'GOOGLE')),
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -30,7 +33,9 @@ CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
+    description TEXT,
     color VARCHAR(7), -- HEX color code
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -48,6 +53,8 @@ CREATE TABLE reminders (
     priority INTEGER DEFAULT 0, -- 0=low, 1=medium, 2=high
     is_recurring BOOLEAN DEFAULT FALSE,
     completed_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -58,14 +65,24 @@ CREATE TABLE reminders (
     interval_minutes INTEGER, -- For DYNAMIC reminders
     trigger_event trigger_event, -- For DYNAMIC reminders
     
-    -- Flat EndCondition columns
-    end_condition_type VARCHAR(10), -- Store the Enum name: "TIME", "EVENT", or "MANUAL"
-    end_condition_value VARCHAR(255) -- Store the actual time or event name as a string
+    -- EndCondition (single JSONB payload; validate & map to sealed class in service layer)
+    -- Example shapes:
+    --   {"type":"TIME","date":"2026-04-23"}
+    --   {"type":"EVENT","event":"SOME_EVENT"}
+    --   {"type":"MANUAL"}
+    end_condition JSONB,
+    CONSTRAINT reminders_end_condition_kind_chk CHECK (
+        end_condition IS NULL
+        OR (
+            jsonb_typeof(end_condition) = 'object'
+            AND (end_condition ? 'type')
+            AND (end_condition->>'type') IN ('TIME', 'EVENT', 'MANUAL')
+        )
+    )
 );
 
 -- Create indexes for better performance
 CREATE INDEX idx_projects_user_id ON projects(user_id);
-CREATE INDEX idx_projects_is_archived ON projects(is_archived);
 
 -- Foreign Key and Global lookup indexes
 CREATE INDEX idx_reminders_project_id ON reminders(project_id);
@@ -77,6 +94,8 @@ CREATE INDEX idx_reminders_user_project ON reminders(user_id, project_id);
 CREATE INDEX idx_reminders_user_due_date ON reminders(user_id, due_date);
 CREATE INDEX idx_reminders_user_type ON reminders(user_id, reminder_type);
 CREATE INDEX idx_reminders_user_priority ON reminders(user_id, priority);
+CREATE INDEX idx_reminders_user_deleted_at ON reminders(user_id, deleted_at);
+CREATE INDEX idx_reminders_user_updated_at ON reminders(user_id, updated_at);
 
 -- Performance indexes for scheduler/trigger lookups
 CREATE INDEX idx_reminders_execution_time ON reminders(execution_time);

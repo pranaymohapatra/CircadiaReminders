@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonTypeName
 import io.micronaut.serde.annotation.Serdeable
+import java.time.LocalDate
 import java.time.LocalTime
 
 @Serdeable
@@ -17,7 +18,7 @@ sealed class EndConditionDto {
     
     @Serdeable
     @JsonTypeName("TIME")
-    data class TimeCondition(val time: LocalTime) : EndConditionDto()
+    data class TimeCondition(val date: LocalDate) : EndConditionDto()
     
     @Serdeable
     @JsonTypeName("EVENT")

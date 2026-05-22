@@ -1,0 +1,18 @@
+datasources:
+  default:
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    url: jdbc:tc:postgresql:16:///circadia_test
+    username: test
+    password: test
+
+micronaut:
+  security:
+    token:
+      jwt:
+        signatures:
+          secret:
+            generator:
+              secret: test-signature-secret-test-signature-secret
+        generator:
+          refresh-token:
+            secret: test-refresh-secret-test-refresh-secret
